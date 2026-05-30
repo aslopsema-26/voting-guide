@@ -1,6 +1,3 @@
-// pages/api/analyze.js
-// Server-side proxy for Anthropic API calls with streaming support.
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -32,9 +29,7 @@ export default async function handler(req, res) {
       return res.status(response.status).json({ error: data.error?.message || "API error" });
     }
 
-    // Stream plain text back to client
     res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Transfer-Encoding", "chunked");
     res.setHeader("Cache-Control", "no-cache");
 
     const reader = response.body.getReader();
@@ -43,11 +38,8 @@ export default async function handler(req, res) {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
-
       const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n");
-
-      for (const line of lines) {
+      for (const line of chunk.split("\n")) {
         if (!line.startsWith("data: ")) continue;
         const data = line.slice(6).trim();
         if (data === "[DONE]") continue;
@@ -59,7 +51,6 @@ export default async function handler(req, res) {
         } catch(_) {}
       }
     }
-
     res.end();
   } catch (err) {
     res.status(500).json({ error: err.message });

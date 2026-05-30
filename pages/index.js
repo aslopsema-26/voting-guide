@@ -22,7 +22,7 @@ function clearState() {
 }
 
 // ── API call (streaming) ──────────────────────────────────────────────────────
-async function callClaudeStream(prompt, onChunk) {
+async function callClaudeStream(prompt, onLine) {
   const res = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -34,15 +34,26 @@ async function callClaudeStream(prompt, onChunk) {
   }
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let full = "";
+  let buffer = "";
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    const chunk = decoder.decode(value, { stream: true });
-    full += chunk;
-    onChunk(full);
+    buffer += decoder.decode(value, { stream: true });
+    // Try to parse each complete line as a JSON object
+    const lines = buffer.split("\n");
+    buffer = lines.pop(); // keep incomplete last line
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        try { onLine(JSON.parse(trimmed)); } catch(_) {}
+      }
+    }
   }
-  return full;
+  // Try final buffer
+  const trimmed = buffer.trim();
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    try { onLine(JSON.parse(trimmed)); } catch(_) {}
+  }
 }
 
 function parseSection(text, key) {
@@ -223,7 +234,7 @@ function RaceAnalyzer({ answers, importance }) {
       `- ${c.name} (${c.party==="D"?"Democrat":c.party==="R"?"Republican":"Independent"})${c.note?`: ${c.note}`:""}`
     ).join("\n");
 
-    const prompt = `You are a nonpartisan political analyst. Analyze ALL of these candidates against the voter's values profile in a single response.
+    const prompt = `You are a nonpartisan political analyst. Analyze each candidate below against the voter's values profile.
 
 RACE: ${raceName}
 
@@ -233,44 +244,26 @@ ${candidateList}
 VOTER PROFILE (${answeredCount} questions answered):
 ${profileText}
 
-Respond with ONLY a JSON array — no explanation, no markdown fences, just raw JSON. Include all ${candidates.length} candidates.
+Output one JSON object per line (NDJSON format) — one line per candidate, no array brackets, no markdown, no extra text. Each line must be a complete valid JSON object:
+{"name":"Candidate Name","score":72,"summary":"One sentence alignment summary.","aligns":["• Point one","• Point two","• Point three"],"diverges":["• Point one","• Point two"],"watchfor":["• Thing to research"]}
 
-[{"name":"Candidate Name","score":72,"summary":"One sentence characterizing overall alignment.","aligns":["• Point one","• Point two","• Point three"],"diverges":["• Point one","• Point two"],"watchfor":["• Thing to research before deciding"]}]
-
-Score is 1-100 alignment percentage. Be nonpartisan and evidence-based.`;
+Output all ${candidates.length} candidates, one per line. Score is 1-100. Be nonpartisan and evidence-based.`;
 
     try {
-      // Parse candidates progressively as JSON objects complete in the stream
-      const parsePartial = (text) => {
-        const newResults = {};
-        // Match each complete JSON object in the array
-        const objectRegex = /\{[^{}]*"name"\s*:\s*"([^"]+)"[^{}]*\}/g;
-        let match;
-        while ((match = objectRegex.exec(text)) !== null) {
-          try {
-            const obj = JSON.parse(match[0]);
-            if (obj.name) {
-              newResults[obj.name] = {
-                text: "",
-                score: obj.score || 50,
-                summary: obj.summary || "",
-                aligns: Array.isArray(obj.aligns) ? obj.aligns.join("\n") : obj.aligns || "",
-                diverges: Array.isArray(obj.diverges) ? obj.diverges.join("\n") : obj.diverges || "",
-                watchfor: Array.isArray(obj.watchfor) ? obj.watchfor.join("\n") : obj.watchfor || "",
-              };
-            }
-          } catch(_) {}
-        }
-        return newResults;
-      };
-
-      await callClaudeStream(prompt, (partial) => {
-        const parsed = parsePartial(partial);
-        if (Object.keys(parsed).length > 0) {
-          setResults(parsed);
-        }
+      await callClaudeStream(prompt, (item) => {
+        if (!item.name) return;
+        setResults(prev => ({
+          ...prev,
+          [item.name]: {
+            text: "",
+            score: item.score || 50,
+            summary: item.summary || "",
+            aligns: Array.isArray(item.aligns) ? item.aligns.join("\n") : item.aligns || "",
+            diverges: Array.isArray(item.diverges) ? item.diverges.join("\n") : item.diverges || "",
+            watchfor: Array.isArray(item.watchfor) ? item.watchfor.join("\n") : item.watchfor || "",
+          }
+        }));
       });
-
     } catch(e) {
       const errResults = {};
       for (const c of candidates) errResults[c.name] = {text:String(e),score:0,error:true};
