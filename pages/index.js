@@ -386,9 +386,8 @@ export default function Home() {
                     {label}
                   </button>
                 ))}
-                {process.env.NODE_ENV==="development" && (
-                  <button onClick={()=>{setAnswers(TEST_ANSWERS);setImportance(TEST_IMPORTANCE);setView("analyze");}} title="Load test profile" style={{padding:"0.35rem 0.6rem",borderRadius:"20px",border:"1.5px solid #374151",background:"transparent",color:"#6b7280",fontSize:"0.72rem",cursor:"pointer"}}>🧪</button>
-                )}
+                {/* Test profile button - remove before public launch */}
+                <button onClick={()=>{setAnswers(TEST_ANSWERS);setImportance(TEST_IMPORTANCE);setView("analyze");}} title="Load test profile" style={{padding:"0.35rem 0.6rem",borderRadius:"20px",border:"1.5px solid #374151",background:"transparent",color:"#6b7280",fontSize:"0.72rem",cursor:"pointer"}}>🧪</button>
                 {!showResetConfirm
                   ?<button onClick={()=>setShowResetConfirm(true)} title="Start over" style={{padding:"0.35rem 0.6rem",borderRadius:"20px",border:"1.5px solid #374151",background:"transparent",color:"#6b7280",fontSize:"0.72rem",cursor:"pointer"}}>↺</button>
                   :<span style={{display:"flex",alignItems:"center",gap:"0.3rem"}}>
