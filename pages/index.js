@@ -326,22 +326,38 @@ Output all ${candidates.length} candidates, one per line. Score is 1-100. Be non
         </button>
       </div>
 
-      {/* No skeletons - cards appear from top as they arrive */}
+      {/* Header — show as soon as loading starts */}
+      {(loading || sortedResults.length>0) && (
+        <h3 style={{fontFamily:"'Playfair Display',serif",color:"#1a1a2e",fontSize:"1rem",marginBottom:"0.75rem"}}>
+          {loading
+            ? `Analyzing… ${sortedResults.length} of ${candidates.length} done`
+            : "Results — ranked by alignment with your profile"
+          }
+        </h3>
+      )}
 
+      {/* Real results — arrival order while loading, score order when done */}
       {sortedResults.length>0 && (
         <>
-          <h3 style={{fontFamily:"'Playfair Display',serif",color:"#1a1a2e",fontSize:"1rem",marginBottom:"0.75rem"}}>
-            {loading
-              ? `Analyzing… ${sortedResults.length} of ${candidates.length} done`
-              : "Results — ranked by alignment with your profile"
-            }
-          </h3>
           {sortedResults.map((name,rank)=>(
             <CandidateCard key={name} name={name} rank={rank} result={results[name]}
               candidate={candidates.find(c=>c.name===name)||{}} scoreColor={scoreColor} partyColor={partyColor} defaultExpanded={rank===0}/>
           ))}
         </>
       )}
+
+      {/* Skeleton placeholders for candidates not yet loaded */}
+      {loading && candidates.filter(c=>!results[c.name]).map((c,i)=>(
+        <div key={c.name} style={{background:"white",borderRadius:"14px",padding:"1.25rem",marginBottom:"1rem",display:"flex",alignItems:"center",gap:"0.75rem",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
+          <div style={{width:"1.75rem",height:"1.75rem",borderRadius:"50%",background:"#f3f4f6",flexShrink:0}}/>
+          <div style={{width:"2.75rem",height:"2.75rem",borderRadius:"50%",border:"3px solid #e5e7eb",flexShrink:0}}/>
+          <div style={{flex:1}}>
+            <div style={{height:"0.9rem",width:`${6+Math.random()*4}rem`,background:"#f3f4f6",borderRadius:"4px",marginBottom:"0.5rem"}}/>
+            <div style={{height:"0.7rem",width:`${4+Math.random()*3}rem`,background:"#f3f4f6",borderRadius:"4px"}}/>
+          </div>
+          <span style={{fontSize:"0.75rem",color:"#d1d5db"}}>analyzing…</span>
+        </div>
+      ))}
     </div>
   );
 }
