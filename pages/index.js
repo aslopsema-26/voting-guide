@@ -21,16 +21,28 @@ function clearState() {
   try { localStorage.removeItem(STORAGE_KEY); } catch(_) {}
 }
 
-// ── API call (server-side proxied) ────────────────────────────────────────────
-async function callClaude(prompt) {
+// ── API call (streaming) ──────────────────────────────────────────────────────
+async function callClaudeStream(prompt, onChunk) {
   const res = await fetch("/api/analyze", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt }),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "API error");
-  return data.text;
+  if (!res.ok) {
+    const data = await res.json();
+    throw new Error(data.error || "API error");
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let full = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    const chunk = decoder.decode(value, { stream: true });
+    full += chunk;
+    onChunk(full);
+  }
+  return full;
 }
 
 function parseSection(text, key) {
@@ -228,23 +240,38 @@ Respond with ONLY a JSON array — no explanation, no markdown fences, just raw 
 Score is 1-100 alignment percentage. Be nonpartisan and evidence-based.`;
 
     try {
-      const text = await callClaude(prompt);
-      const clean = text.replace(/```json|```/g,"").trim();
-      const parsed = JSON.parse(clean);
-      const newResults = {};
-      for (const item of parsed) {
-        newResults[item.name] = {
-          text: "",
-          score: item.score || 50,
-          summary: item.summary || "",
-          aligns: Array.isArray(item.aligns) ? item.aligns.join("\n") : item.aligns || "",
-          diverges: Array.isArray(item.diverges) ? item.diverges.join("\n") : item.diverges || "",
-          watchfor: Array.isArray(item.watchfor) ? item.watchfor.join("\n") : item.watchfor || "",
-        };
-      }
-      setResults(newResults);
+      // Parse candidates progressively as JSON objects complete in the stream
+      const parsePartial = (text) => {
+        const newResults = {};
+        // Match each complete JSON object in the array
+        const objectRegex = /\{[^{}]*"name"\s*:\s*"([^"]+)"[^{}]*\}/g;
+        let match;
+        while ((match = objectRegex.exec(text)) !== null) {
+          try {
+            const obj = JSON.parse(match[0]);
+            if (obj.name) {
+              newResults[obj.name] = {
+                text: "",
+                score: obj.score || 50,
+                summary: obj.summary || "",
+                aligns: Array.isArray(obj.aligns) ? obj.aligns.join("\n") : obj.aligns || "",
+                diverges: Array.isArray(obj.diverges) ? obj.diverges.join("\n") : obj.diverges || "",
+                watchfor: Array.isArray(obj.watchfor) ? obj.watchfor.join("\n") : obj.watchfor || "",
+              };
+            }
+          } catch(_) {}
+        }
+        return newResults;
+      };
+
+      await callClaudeStream(prompt, (partial) => {
+        const parsed = parsePartial(partial);
+        if (Object.keys(parsed).length > 0) {
+          setResults(parsed);
+        }
+      });
+
     } catch(e) {
-      // If single call fails, show error on all candidates
       const errResults = {};
       for (const c of candidates) errResults[c.name] = {text:String(e),score:0,error:true};
       setResults(errResults);

@@ -1,6 +1,5 @@
 // pages/api/analyze.js
-// Server-side proxy for Anthropic API calls.
-// The ANTHROPIC_API_KEY env var is set in Vercel dashboard — never exposed to the browser.
+// Server-side proxy for Anthropic API calls with streaming support.
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -23,19 +22,46 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: "claude-haiku-4-5",
         max_tokens: 4000,
+        stream: true,
         messages: [{ role: "user", content: prompt }],
       }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
+      const data = await response.json();
       return res.status(response.status).json({ error: data.error?.message || "API error" });
     }
 
-    const text = data.content?.filter(b => b.type === "text").map(b => b.text).join("\n") || "";
-    return res.status(200).json({ text });
+    // Stream plain text back to client
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Transfer-Encoding", "chunked");
+    res.setHeader("Cache-Control", "no-cache");
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n");
+
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") continue;
+        try {
+          const event = JSON.parse(data);
+          if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+            res.write(event.delta.text);
+          }
+        } catch(_) {}
+      }
+    }
+
+    res.end();
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 }
