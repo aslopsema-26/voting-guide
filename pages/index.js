@@ -213,6 +213,7 @@ function RaceAnalyzer({ answers, importance }) {
   const [customRaceName, setCustomRaceName] = useState("");
   const [customCandidates, setCustomCandidates] = useState([{name:"",note:""},{name:"",note:""}]);
   const [results, setResults] = useState({});
+  const [arrivalOrder, setArrivalOrder] = useState([]);
   const [loading, setLoading] = useState(false);
   const [loadingName, setLoadingName] = useState("");
 
@@ -226,7 +227,7 @@ function RaceAnalyzer({ answers, importance }) {
     : customCandidates.filter(c=>c.name.trim());
 
   const analyzeAll = async () => {
-    setLoading(true); setResults({});
+    setLoading(true); setResults({}); setArrivalOrder([]);
     const candidates = getCandidates();
     const raceName = mode==="preset" ? PRESET_RACES.find(r=>r.id===selectedRace)?.label : customRaceName;
 
@@ -252,6 +253,7 @@ Output all ${candidates.length} candidates, one per line. Score is 1-100. Be non
     try {
       await callClaudeStream(prompt, (item) => {
         if (!item.name) return;
+        setArrivalOrder(prev => prev.includes(item.name) ? prev : [...prev, item.name]);
         setResults(prev => ({
           ...prev,
           [item.name]: {
@@ -273,7 +275,9 @@ Output all ${candidates.length} candidates, one per line. Score is 1-100. Be non
   };
 
   const candidates = getCandidates();
-  const sortedResults = [...Object.keys(results)].sort((a,b)=>(results[b]?.score||0)-(results[a]?.score||0));
+  const sortedResults = loading
+    ? arrivalOrder.filter(name => results[name])
+    : [...Object.keys(results)].sort((a,b)=>(results[b]?.score||0)-(results[a]?.score||0));
 
   return (
     <div>
