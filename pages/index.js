@@ -97,10 +97,10 @@ function ImportanceSelector({ value, onChange }) {
 // ── CandidateCard ─────────────────────────────────────────────────────────────
 function CandidateCard({ name, rank, result, candidate, scoreColor, partyColor, defaultExpanded }) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const summary  = parseSection(result.text, "SUMMARY");
-  const aligns   = parseSection(result.text, "ALIGNS");
-  const diverges = parseSection(result.text, "DIVERGES");
-  const watchfor = parseSection(result.text, "WATCHFOR");
+  const summary  = result.summary  || parseSection(result.text, "SUMMARY");
+  const aligns   = result.aligns   || parseSection(result.text, "ALIGNS");
+  const diverges = result.diverges || parseSection(result.text, "DIVERGES");
+  const watchfor = result.watchfor || parseSection(result.text, "WATCHFOR");
 
   return (
     <div style={{background:"white",borderRadius:"14px",marginBottom:"1rem",overflow:"hidden",boxShadow:"0 1px 4px rgba(0,0,0,0.06)"}}>
@@ -207,40 +207,47 @@ function RaceAnalyzer({ answers, importance }) {
     const candidates = getCandidates();
     const raceName = mode==="preset" ? PRESET_RACES.find(r=>r.id===selectedRace)?.label : customRaceName;
 
-    for (const candidate of candidates) {
-      setLoadingName(candidate.name);
-      try {
-        const prompt = `You are a nonpartisan political analyst. Analyze how well this candidate aligns with the voter's values profile.
+    const candidateList = candidates.map(c =>
+      `- ${c.name} (${c.party==="D"?"Democrat":c.party==="R"?"Republican":"Independent"})${c.note?`: ${c.note}`:""}`
+    ).join("\n");
+
+    const prompt = `You are a nonpartisan political analyst. Analyze ALL of these candidates against the voter's values profile in a single response.
 
 RACE: ${raceName}
-CANDIDATE: ${candidate.name}${candidate.note?`\nCANDIDATE BACKGROUND: ${candidate.note}`:""}
+
+CANDIDATES:
+${candidateList}
 
 VOTER PROFILE (${answeredCount} questions answered):
 ${profileText}
 
-Respond in this EXACT format with these EXACT labels:
+Respond with ONLY a JSON array — no explanation, no markdown fences, just raw JSON. Include all ${candidates.length} candidates.
 
-SCORE: [number 1-100]
-SUMMARY: [one sentence]
-ALIGNS:
-• [point one]
-• [point two]
-• [point three]
-DIVERGES:
-• [point one]
-• [point two]
-WATCHFOR:
-• [thing to research]
+[{"name":"Candidate Name","score":72,"summary":"One sentence characterizing overall alignment.","aligns":["• Point one","• Point two","• Point three"],"diverges":["• Point one","• Point two"],"watchfor":["• Thing to research before deciding"]}]
 
-Be evidence-based and nonpartisan.`;
+Score is 1-100 alignment percentage. Be nonpartisan and evidence-based.`;
 
-        const text = await callClaude(prompt);
-        const scoreMatch = text.match(/SCORE:\s*(\d+)/);
-        const score = scoreMatch ? parseInt(scoreMatch[1]) : 50;
-        setResults(prev=>({...prev,[candidate.name]:{text,score}}));
-      } catch(e) {
-        setResults(prev=>({...prev,[candidate.name]:{text:String(e),score:0,error:true}}));
+    try {
+      const text = await callClaude(prompt);
+      const clean = text.replace(/```json|```/g,"").trim();
+      const parsed = JSON.parse(clean);
+      const newResults = {};
+      for (const item of parsed) {
+        newResults[item.name] = {
+          text: "",
+          score: item.score || 50,
+          summary: item.summary || "",
+          aligns: Array.isArray(item.aligns) ? item.aligns.join("\n") : item.aligns || "",
+          diverges: Array.isArray(item.diverges) ? item.diverges.join("\n") : item.diverges || "",
+          watchfor: Array.isArray(item.watchfor) ? item.watchfor.join("\n") : item.watchfor || "",
+        };
       }
+      setResults(newResults);
+    } catch(e) {
+      // If single call fails, show error on all candidates
+      const errResults = {};
+      for (const c of candidates) errResults[c.name] = {text:String(e),score:0,error:true};
+      setResults(errResults);
     }
     setLoadingName(""); setLoading(false);
   };
@@ -291,7 +298,7 @@ Be evidence-based and nonpartisan.`;
 
         <button onClick={analyzeAll} disabled={loading||candidates.length===0}
           style={{marginTop:"1.25rem",background:loading||candidates.length===0?"#d1d5db":"#c84b31",color:"white",border:"none",borderRadius:"10px",padding:"0.75rem 1.5rem",fontSize:"0.95rem",fontFamily:"'Playfair Display',serif",cursor:loading||candidates.length===0?"not-allowed":"pointer",width:"100%"}}>
-          {loading?`Analyzing ${loadingName}…`:`Analyze ${candidates.length} Candidate${candidates.length!==1?"s":""} →`}
+          {loading?`Analyzing all candidates…`:`Analyze ${candidates.length} Candidate${candidates.length!==1?"s":""} →`}
         </button>
       </div>
 

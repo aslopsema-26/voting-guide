@@ -21,8 +21,8 @@ export default async function handler(req, res) {
         "x-api-key": process.env.ANTHROPIC_API_KEY,
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
-        max_tokens: 1000,
+        model: "claude-haiku-4-5",
+        max_tokens: 4000,
         messages: [{ role: "user", content: prompt }],
       }),
     });
