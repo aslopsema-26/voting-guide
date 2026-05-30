@@ -326,25 +326,15 @@ Output all ${candidates.length} candidates, one per line. Score is 1-100. Be non
         </button>
       </div>
 
-      {/* Skeleton cards */}
-      {loading && candidates.map(c=>(
-        !results[c.name] && (
-          <div key={c.name} style={{background:"white",borderRadius:"14px",padding:"1.25rem",marginBottom:"1rem",opacity:0.5,display:"flex",alignItems:"center",gap:"0.75rem"}}>
-            <div style={{width:"1.75rem",height:"1.75rem",borderRadius:"50%",background:"#f3f4f6",flexShrink:0}}/>
-            <div style={{width:"2.75rem",height:"2.75rem",borderRadius:"50%",border:"3px solid #e5e7eb",flexShrink:0}}/>
-            <div style={{flex:1}}>
-              <div style={{height:"0.9rem",width:"8rem",background:"#f3f4f6",borderRadius:"4px",marginBottom:"0.4rem"}}/>
-              <div style={{height:"0.7rem",width:"5rem",background:"#f3f4f6",borderRadius:"4px"}}/>
-            </div>
-            <span style={{fontSize:"0.75rem",color:"#9ca3af"}}>{c.name===loadingName?"Analyzing…":"Waiting…"}</span>
-          </div>
-        )
-      ))}
+      {/* No skeletons - cards appear from top as they arrive */}
 
       {sortedResults.length>0 && (
         <>
           <h3 style={{fontFamily:"'Playfair Display',serif",color:"#1a1a2e",fontSize:"1rem",marginBottom:"0.75rem"}}>
-            Results — ranked by alignment with your profile
+            {loading
+              ? `Analyzing… ${sortedResults.length} of ${candidates.length} done`
+              : "Results — ranked by alignment with your profile"
+            }
           </h3>
           {sortedResults.map((name,rank)=>(
             <CandidateCard key={name} name={name} rank={rank} result={results[name]}
